@@ -133,16 +133,65 @@ export async function openSendDialog(ctx, {
           h('div', { class: 'done-icon' }, icon('check', 40)),
           h('h3', {}, 'המייל מוכן!'),
           h('ol', {},
-            h('li', {}, 'לפתוח את הקובץ שירד ', h('b', {}, `"${fileSafe(subject.value)}.eml"`), ' (בסרגל ההורדות של הדפדפן) – הוא ייפתח באאוטלוק כהודעה חדשה.'),
+            h('li', {}, 'המייל נפתח באאוטלוק (אם לא – לפתוח את הקובץ שירד ', h('b', {}, `"${fileSafe(subject.value)}.eml"`), ' מסרגל ההורדות).'),
             h('li', {}, 'לוודא שהכול נראה תקין ושהאקסל מצורף.'),
             h('li', {}, 'ללחוץ ', h('b', {}, 'Send / שלח'), '.')),
-          h('p', { class: 'muted small' },
-            'טיפ: ב-Edge או Chrome אפשר ללחוץ על ⋯ ליד ההורדה ולבחור "פתח תמיד קבצים מסוג זה" – ובפעם הבאה המייל ייפתח מיד. ',
-            'אם הקובץ לא נפתח באאוטלוק: קליק ימני ← "פתח באמצעות" ← Outlook.')));
+          autoOpenGuide()));
       goBtn.remove();
     } catch (err) {
       goBtn.disabled = false;
       toast(`יצירת המייל נכשלה: ${err.message}`, 'error', 7000);
     }
   });
+}
+
+// ---------- הגדרה חד-פעמית: שהמייל ייפתח באאוטלוק לבד ----------
+
+const GUIDE_KEY = 'hours-report:auto-open-done';
+
+/**
+ * אתר לא יכול לפתוח את אאוטלוק עם קובץ מצורף (mailto לא תומך בצירוף קבצים), לכן המייל יורד כקובץ eml.
+ * עם שתי הגדרות חד-פעמיות בדפדפן הקובץ נפתח באאוטלוק מיד, בלי חלון שמירה ובלי לחיצה נוספת.
+ */
+function autoOpenGuide() {
+  try {
+    if (localStorage.getItem(GUIDE_KEY)) return null;
+  } catch {
+    // אין גישה ל-localStorage – פשוט מציגים את ההדרכה
+  }
+  const edge = /Edg\//.test(navigator.userAgent);
+  const settingsUrl = edge ? 'edge://settings/downloads' : 'chrome://settings/downloads';
+  const copyBtn = h('button', {
+    class: 'btn ghost small',
+    onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(settingsUrl);
+        toast('הכתובת הועתקה – להדביק בשורת הכתובת של הדפדפן', 'success');
+      } catch {
+        toast(settingsUrl, 'info', 8000);
+      }
+    },
+  }, 'העתקה');
+  const box = h('div', { class: 'auto-open' },
+    h('strong', {}, '⚡ פעם אחת – כדי שבפעם הבאה המייל ייפתח באאוטלוק לבד:'),
+    h('ol', {},
+      h('li', {}, 'לפתוח בדפדפן את ', h('code', { dir: 'ltr' }, settingsUrl), ' ', copyBtn, ' ולכבות את ',
+        h('b', { dir: 'ltr' }, 'Ask where to save each file before downloading'),
+        ' (שאל איפה לשמור כל קובץ לפני ההורדה).'),
+      h('li', {}, 'בהורדה הבאה של המייל: בסמל ההורדות של הדפדפן (', h('b', {}, 'Ctrl+J'), ') – קליק ימני על הקובץ ← ',
+        h('b', { dir: 'ltr' }, 'Always open files of this type'), ' (פתח תמיד קבצים מסוג זה).')),
+    h('label', { class: 'check small' },
+      h('input', {
+        type: 'checkbox',
+        onchange: (e) => {
+          try {
+            if (e.target.checked) localStorage.setItem(GUIDE_KEY, '1');
+            else localStorage.removeItem(GUIDE_KEY);
+          } catch {
+            // לא קריטי
+          }
+        },
+      }),
+      h('span', {}, 'הגדרתי – לא להציג שוב')));
+  return box;
 }

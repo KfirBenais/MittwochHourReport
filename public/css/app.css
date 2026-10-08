@@ -432,6 +432,13 @@ input.time { width: 66px; text-align: center; direction: ltr; font-variant-numer
 .done h3 { font-size: 22px; margin: 0 0 12px; }
 .done ol { text-align: right; display: inline-block; margin: 0 auto 12px; padding-inline-start: 20px; font-size: 16px; }
 .done ol li { margin: 6px 0; }
+.auto-open {
+  text-align: right; margin: 8px auto 0; max-width: 640px; padding: 12px 14px;
+  background: var(--info-soft); border-radius: 12px; font-size: 14px;
+}
+.auto-open ol { display: block; margin: 8px 0; font-size: 14px; }
+.auto-open code { background: var(--surface); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+.auto-open .btn.small { min-height: 26px; padding: 2px 8px; margin-inline: 4px; }
 
 /* ---------- הודעות ---------- */
 

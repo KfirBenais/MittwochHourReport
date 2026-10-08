@@ -196,10 +196,11 @@ if (-not $ok) {
 Write-Ok "The site is running! (version $(Get-AppVersion $Dir))"
 Write-Host ''
 Write-Host 'Open from your computer:' -ForegroundColor Cyan
-Write-Host "    http://$($env:COMPUTERNAME.ToLower()):$Port"
+$portSuffix = if ($Port -eq 80) { '' } else { ":$Port" }
+Write-Host "    http://$($env:COMPUTERNAME.ToLower())$portSuffix"
 Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
   Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
-  ForEach-Object { Write-Host "    http://$($_.IPAddress):$Port" }
+  ForEach-Object { Write-Host "    http://$($_.IPAddress)$portSuffix" }
 Write-Host ''
 if (-not $oldVersion) { Write-Host 'The first person to register becomes the team admin.' }
 Write-Host ''
