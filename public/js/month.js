@@ -17,7 +17,7 @@ export function reportStatus(report) {
   if (!report?.sentAt) return { cls: 'draft', text: 'טיוטה – טרם נשלח' };
   const changed = report.updatedAt && new Date(report.updatedAt) - new Date(report.sentAt) > 60000;
   if (changed) return { cls: 'changed', text: `עודכן אחרי השליחה (${formatDateTime(report.sentAt)}) – כדאי לשלוח שוב` };
-  return { cls: 'sent', text: `נשלח ${formatDateTime(report.sentAt)}` };
+  return { cls: 'sent', text: `${report.sentManually ? 'סומן כנשלח' : 'נשלח'} ${formatDateTime(report.sentAt)}` };
 }
 
 export async function showMonth(ctx, ym) {
@@ -36,7 +36,7 @@ export async function showMonth(ctx, ym) {
     store.getReport(ym),
     store.yearReports(ym.slice(0, 4)).catch(() => ({})),
   ]);
-  const prevReport = ym === prevYm ? report : await store.getReport(prevYm).catch(() => null);
+  let prevReport = ym === prevYm ? report : await store.getReport(prevYm).catch(() => null);
   if (ctx.nav !== nav) return null;
 
   let days = { ...(report.days || {}) };
@@ -76,11 +76,41 @@ export async function showMonth(ctx, ym) {
   // ---------- כותרת ----------
 
   const statusPill = h('span', { class: 'pill' });
+  const markBtn = h('button', { class: 'btn ghost small' });
   const refreshStatus = () => {
     const st = reportStatus(current);
     statusPill.className = `pill ${st.cls}`;
     clear(statusPill, st.text);
+    if (current.sentAt) {
+      markBtn.hidden = false;
+      clear(markBtn, 'ביטול הסימון');
+      markBtn.title = 'החזרת החודש למצב "טרם נשלח"';
+      markBtn.onclick = async () => {
+        if (!await confirmDialog('ביטול הסימון', `להחזיר את ${monthLabel(ym)} למצב "טרם נשלח"?`, 'ביטול הסימון')) return;
+        await setSent(ym, false);
+      };
+    } else {
+      // רק לחודש שכבר נגמר – כדי שלא יסמנו בטעות את החודש הנוכחי במקום הקודם
+      markBtn.hidden = ym >= curYm;
+      clear(markBtn, icon('check', 14), ' סמן כנשלח');
+      markBtn.title = 'אם הדוח כבר נשלח בלי האתר';
+      markBtn.onclick = () => setSent(ym, true);
+    }
   };
+
+  /** סימון חודש כנשלח ("כבר שלחתי") או ביטול הסימון */
+  async function setSent(target, sent) {
+    try {
+      const r = sent ? await store.markSent(target, { manual: true }) : await store.unmarkSent(target);
+      if (target === ym) current = r;
+      if (target === prevYm) prevReport = r;
+      refreshStatus();
+      renderBanner();
+      toast(sent ? `${monthLabel(target)} סומן כנשלח` : `הסימון של ${monthLabel(target)} בוטל`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
   refreshStatus();
 
   const dates = monthDays(ym);
@@ -94,7 +124,7 @@ export async function showMonth(ctx, ym) {
         h('div', { class: 'muted small' }, hebRange)),
       h('a', { class: 'icon-btn', href: `#/month/${shiftMonth(ym, 1)}`, title: 'החודש הבא', 'aria-label': 'החודש הבא' }, icon('next')),
       ym !== curYm ? h('a', { class: 'btn ghost small', href: `#/month/${curYm}` }, 'לחודש הנוכחי') : null),
-    h('div', { class: 'month-meta' }, statusPill, saveIndicator));
+    h('div', { class: 'month-meta' }, statusPill, markBtn, saveIndicator));
 
   // ---------- באנר תזכורת ----------
 
@@ -111,9 +141,11 @@ export async function showMonth(ctx, ym) {
       h('div', { class: 'banner-text' },
         h('strong', {}, isToday ? 'היום יום העבודה הראשון בחודש!' : 'תזכורת:'),
         ` הגיע הזמן לשלוח ל${settings().recipientName} את דיווח השעות של ${monthLabel(prevYm)}.`),
-      ym === prevYm
-        ? h('button', { class: 'btn primary', onclick: () => send() }, icon('mail'), ` שליחה ל${settings().recipientName}`)
-        : h('a', { class: 'btn primary', href: `#/month/${prevYm}` }, `לדוח ${monthLabel(prevYm)}`)));
+      h('div', { class: 'banner-actions' },
+        ym === prevYm
+          ? h('button', { class: 'btn primary', onclick: () => send() }, icon('mail'), ` שליחה ל${settings().recipientName}`)
+          : h('a', { class: 'btn primary', href: `#/month/${prevYm}` }, `לדוח ${monthLabel(prevYm)}`),
+        h('button', { class: 'btn ghost', title: 'אם כבר שלחת את הדוח בלי האתר', onclick: () => setSent(prevYm, true) }, icon('check', 16), ' כבר שלחתי – לסמן כנשלח'))));
   };
 
   // ---------- סטטיסטיקה ----------

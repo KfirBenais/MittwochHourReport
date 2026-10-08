@@ -6,7 +6,7 @@ import {
 import { validate, summarize, fmtMin } from './report.js';
 import { profileForReport, settingsForReport } from './defaults.js';
 import {
-  h, clear, icon, formatDays,
+  h, clear, icon, formatDays, toast,
 } from './ui.js';
 import { downloadExcel } from './send.js';
 import { reportStatus } from './month.js';
@@ -62,6 +62,15 @@ export async function showHistory(ctx) {
           h('td', { class: 'num' }, r.errors ? h('span', { class: 'pill changed' }, String(r.errors)) : r.filled ? h('span', { class: 'ok' }, '✓') : ''),
           h('td', {}, h('span', { class: `pill ${r.notSent && r.filled ? 'changed' : r.st.cls}` }, r.notSent && r.filled ? 'לא נשלח' : r.st.text)),
           h('td', { class: 'actions' },
+            r.notSent ? h('button', {
+              class: 'btn ghost small',
+              title: 'אם הדוח כבר נשלח בלי האתר',
+              onclick: async () => {
+                await ctx.store.markSent(r.ym, { manual: true });
+                toast(`${monthLabel(r.ym)} סומן כנשלח`, 'success');
+                showHistory(ctx);
+              },
+            }, icon('check', 14), ' סמן כנשלח') : null,
             h('a', { class: 'btn ghost small', href: `#/month/${r.ym}` }, 'פתיחה'),
             r.filled ? h('button', {
               class: 'btn ghost small',

@@ -214,8 +214,20 @@ test('reports, history and the send-time snapshot', async () => {
   assert.equal(r.data.snapshot.fullName, 'דנה כהן');
   assert.equal(r.data.snapshot.breakMin, 30);
 
+  // "already sent outside the site" – mark a month manually, and undo it
+  r = await dana('POST', '/api/reports/2025-12/sent', { manual: true });
+  assert.ok(r.data.sentAt);
+  assert.equal(r.data.sentManually, true);
+  assert.equal(r.data.days['2025-12-01'].type, 'vacation', 'marking keeps the data');
+  r = await dana('POST', '/api/reports/2025-12/sent', { sent: false });
+  assert.equal(r.data.sentAt, null);
+  assert.equal(r.data.snapshot, undefined);
+  assert.equal(r.data.days['2025-12-01'].type, 'vacation');
+  r = await dana('POST', '/api/reports/2025-11/sent', { manual: true });
+  assert.ok(r.data.sentAt, 'a month that was never filled can be marked too');
+
   r = await dana('GET', '/api/reports');
-  assert.deepEqual(Object.keys(r.data.months).sort(), ['2025-12', '2026-09']);
+  assert.deepEqual(Object.keys(r.data.months).sort(), ['2025-11', '2025-12', '2026-09']);
   r = await dana('GET', '/api/reports?year=2026');
   assert.deepEqual(Object.keys(r.data.months), ['2026-09']);
 

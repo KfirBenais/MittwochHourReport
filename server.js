@@ -592,10 +592,20 @@ export async function createApp({
     return report;
   });
 
-  route('POST', /^\/api\/reports\/(\d{4}-\d{2})\/sent$/, async ({ session, params }) => {
+  // סימון חודש כנשלח: אחרי יצירת המייל באתר, או ידנית ("כבר שלחתי") עם { manual: true }.
+  // { sent: false } מבטל את הסימון.
+  route('POST', /^\/api\/reports\/(\d{4}-\d{2})\/sent$/, async ({ session, params, body }) => {
     const ym = params[0];
     if (!YM_RE.test(ym)) throw new HttpError(400, 'חודש לא תקין');
-    const report = { ...reportOf(session.user.id, ym), ym, sentAt: new Date().toISOString() };
+    if (body.sent === false) {
+      const report = { ...reportOf(session.user.id, ym), ym, sentAt: null };
+      delete report.sentManually;
+      delete report.snapshot;
+      (db.reports[session.user.id] ||= {})[ym] = report;
+      await store.save();
+      return report;
+    }
+    const report = { ...reportOf(session.user.id, ym), ym, sentAt: new Date().toISOString(), sentManually: body.manual === true };
     report.updatedAt ||= report.sentAt;
     // הפרטים כפי שהיו בשליחה הראשונה – כדי שקובץ של חודש ישן ייווצר בדיוק כמו שנשלח
     const p = mergeProfile(session.user.profile);

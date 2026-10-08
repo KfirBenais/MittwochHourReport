@@ -49,7 +49,8 @@ const serverStore = {
   changePassword: (current, next) => api('POST', 'api/me/password', { current, next }),
   getReport: (ym) => api('GET', `api/reports/${ym}`),
   saveReport: (ym, days) => api('PUT', `api/reports/${ym}`, { days }),
-  markSent: (ym) => api('POST', `api/reports/${ym}/sent`, {}),
+  markSent: (ym, { manual = false } = {}) => api('POST', `api/reports/${ym}/sent`, { manual }),
+  unmarkSent: (ym) => api('POST', `api/reports/${ym}/sent`, { sent: false }),
   yearReports: async (year) => (await api('GET', `api/reports?year=${year}`)).months,
   allReports: async () => (await api('GET', 'api/reports')).months,
   saveSettings: async (settings) => (await api('PUT', 'api/settings', settings)).settings,
@@ -122,8 +123,15 @@ const localStore = {
     lsSet(`report:${ym}`, r);
     return r;
   },
-  async markSent(ym) {
-    const r = { ...(await this.getReport(ym)), ym, sentAt: new Date().toISOString() };
+  async unmarkSent(ym) {
+    const r = { ...(await this.getReport(ym)), ym, sentAt: null };
+    delete r.sentManually;
+    delete r.snapshot;
+    lsSet(`report:${ym}`, r);
+    return r;
+  },
+  async markSent(ym, { manual = false } = {}) {
+    const r = { ...(await this.getReport(ym)), ym, sentAt: new Date().toISOString(), sentManually: manual };
     r.updatedAt ||= r.sentAt;
     const p = mergeProfile(lsGet('profile', {}));
     r.snapshot ||= { fullName: p.fullName, breakMin: p.breakMin, companyName: mergeSettings(lsGet('settings', {})).companyName, at: r.sentAt };
