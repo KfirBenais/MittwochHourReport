@@ -16,6 +16,8 @@ async function api(method, url, body) {
     credentials: 'same-origin',
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    // keepalive: שמירה שנשלחה רגע לפני סגירת הלשונית עדיין מגיעה לשרת
+    keepalive: method !== 'GET',
   });
   let data = null;
   try {

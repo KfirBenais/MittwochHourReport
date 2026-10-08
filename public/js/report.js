@@ -193,11 +193,16 @@ export function validate(ym, days, settings, profile, { uptoISO = null } = {}) {
 /** הערה לחופש בחול המועד – נספר כחצי יום */
 export const CHOLHAMOED_VACATION_NOTE = 'חצי יום חופש (חוה״מ)';
 
-/** כמה ימי חופש יום מסוים "עולה": חול המועד הוא חצי יום עבודה, ולכן חופש בו נספר כחצי יום */
+/**
+ * כמה ימי חופש יום מסוים "עולה" (למעקב בסיכומים).
+ * חול המועד הוא חצי יום עבודה – לכן יום בחוה"מ שלא עבדו בו ("לא עבדתי" או "חופש") נספר כחצי יום חופש.
+ * חג וערב חג – לא נספרים.
+ */
 export function vacationValue(iso, day, special = []) {
-  const halfDay = primaryEvent(iso, special)?.kind === 'cholhamoed';
-  if (day?.type === 'vacation') return halfDay ? 0.5 : 1;
+  const cholhamoed = primaryEvent(iso, special)?.kind === 'cholhamoed';
+  if (day?.type === 'vacation') return cholhamoed ? 0.5 : 1;
   if (day?.type === 'halfVacation') return 0.5;
+  if (day?.type === 'holiday' && cholhamoed && !isWeekend(iso)) return 0.5;
   return 0;
 }
 
@@ -221,7 +226,12 @@ export function summarize(ym, days, profile, special = []) {
       case 'familySick': s.familySick += 1; break;
       case 'reserve': s.reserve += 1; break;
       case 'choice': s.choice += 1; break;
-      case 'holiday': if (!isWeekend(iso)) s.holiday += 1; break;
+      case 'holiday': {
+        const v = vacationValue(iso, day, special);
+        if (v) s.vacation += v; // "לא עבדתי" בחול המועד
+        else if (!isWeekend(iso)) s.holiday += 1;
+        break;
+      }
       case 'other': s.other += 1; break;
       default: break;
     }

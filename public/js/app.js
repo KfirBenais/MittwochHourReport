@@ -7,7 +7,7 @@ import {
 import { POLICY_LABELS } from './defaults.js';
 import { buildReminderIcs } from './email.js';
 import {
-  h, clear, icon, toast, download, normalizeTime,
+  h, clear, icon, toast, download, normalizeTime, autosaver,
 } from './ui.js';
 import { showMonth } from './month.js';
 import { showTeam, showSettings } from './admin.js';
@@ -72,6 +72,7 @@ async function route() {
   ctx.nav = (ctx.nav || 0) + 1;
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('active', a.dataset.route === active);
   window.onbeforeunload = null;
+  window.onpagehide = null;
   try {
     if (!name || name === 'month') await showMonth(ctx, ymArg);
     else if (name === 'holidays') showHolidays();
@@ -147,39 +148,38 @@ function showProfile() {
         input.classList.remove('invalid');
         input.value = v;
         p[key] = v;
+        changedNow();
       },
     });
     return h('label', { class: 'field inline' }, h('span', {}, label), input);
   };
 
-  const saveBtn = h('button', {
-    class: 'btn primary',
-    onclick: async () => {
-      try {
-        if (!p.fullName.trim()) throw new Error('יש להזין שם מלא');
-        ctx.user = await store.saveProfile(p);
-        toast('הפרופיל נשמר', 'success');
-        renderShell();
-        route();
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    },
-  }, icon('check'), ' שמירה');
+  // כל שינוי בפרופיל נשמר אוטומטית
+  const saver = autosaver(async () => {
+    if (!p.fullName.trim()) throw new Error('יש להזין שם מלא');
+    ctx.user = await store.saveProfile(p);
+    // עדכון השם בסרגל העליון בלי לצייר מחדש את המסך (כדי לא לאבד את מיקום ההקלדה)
+    const name = document.querySelector('.user-name');
+    if (name) name.textContent = ctx.user.fullName;
+    const avatar = document.querySelector('.avatar');
+    if (avatar) avatar.textContent = (ctx.user.fullName || '?').trim().charAt(0);
+  });
+  const changed = () => saver.change();
+  const changedNow = () => saver.change({ now: true });
+  window.onpagehide = () => saver.flush();
 
   const cards = [
     h('section', { class: 'card' },
       h('h2', {}, icon('user'), ' הפרטים שלי'),
-      h('label', { class: 'field' }, h('span', {}, 'שם מלא (מופיע באקסל ובנושא המייל)'), h('input', { type: 'text', value: p.fullName, oninput: (e) => { p.fullName = e.target.value; } })),
+      h('label', { class: 'field' }, h('span', {}, 'שם מלא (מופיע באקסל ובנושא המייל)'), h('input', { type: 'text', value: p.fullName, oninput: (e) => { p.fullName = e.target.value; changed(); } })),
       store.mode === 'server'
         ? h('div', { class: 'field' }, h('span', {}, 'מייל (משמש לכניסה)'), h('div', { class: 'readonly', dir: 'ltr' }, user.email || user.username))
-        : h('label', { class: 'field' }, h('span', {}, 'אימייל'), h('input', { type: 'email', dir: 'ltr', value: p.email, oninput: (e) => { p.email = e.target.value; } })),
-      h('label', { class: 'field' }, h('span', {}, 'טלפון נייד'), h('input', { type: 'tel', dir: 'ltr', value: p.phone, placeholder: '050-0000000', oninput: (e) => { p.phone = e.target.value; } })),
+        : h('label', { class: 'field' }, h('span', {}, 'אימייל'), h('input', { type: 'email', dir: 'ltr', value: p.email, oninput: (e) => { p.email = e.target.value; changed(); } })),
+      h('label', { class: 'field' }, h('span', {}, 'טלפון נייד'), h('input', { type: 'tel', dir: 'ltr', value: p.phone, placeholder: '050-0000000', oninput: (e) => { p.phone = e.target.value; changed(); } })),
       h('h3', {}, 'שעות ברירת מחדל'),
       h('div', { class: 'inline-fields' }, timeField('start', 'כניסה'), timeField('end', 'יציאה'), timeField('halfDayEnd', 'סוף חצי יום')),
       h('label', { class: 'field inline' }, h('span', {}, 'זמן הפסקה (דקות)'),
-        h('input', { type: 'number', min: 0, max: 120, step: 5, value: p.breakMin, class: 'time', oninput: (e) => { p.breakMin = Number(e.target.value); } })),
-      h('div', { class: 'page-actions' }, saveBtn)),
+        h('input', { type: 'number', min: 0, max: 120, step: 5, value: p.breakMin, class: 'time', oninput: (e) => { p.breakMin = Number(e.target.value); changed(); } }))),
     h('section', { class: 'card' },
       h('h2', {}, icon('bell'), ' תזכורת חודשית ביומן'),
       h('p', {}, 'קובץ ליומן (Outlook) עם תזכורת קבועה ביום העבודה הראשון של כל חודש ב-09:00: "שליחת דיווח שעות ל', ctx.settings.recipientName, '".'),
@@ -240,7 +240,7 @@ function showProfile() {
         fileInput)));
   }
 
-  clear(ctx.main, h('section', { class: 'page-head' }, h('h1', {}, 'פרופיל')), h('div', { class: 'grid-2' }, cards));
+  clear(ctx.main, h('section', { class: 'page-head row' }, h('h1', {}, 'פרופיל'), saver.indicator), h('div', { class: 'grid-2' }, cards));
 }
 
 // ---------- הפעלה ----------

@@ -5,7 +5,7 @@ import {
   WEEKDAY_LETTERS, WEEKDAY_NAMES, ATTENTION_KINDS, KIND_LABELS, todayISO, ymOf, firstWorkday, monthEvents, groupEvents, parseISO,
 } from './calendar.js';
 import {
-  DAY_TYPES, TYPE_BY_ID, calcDay, fmtMin, validate, summarize, autoFill, workDay, shortDay, offDay, CHOLHAMOED_VACATION_NOTE,
+  DAY_TYPES, TYPE_BY_ID, calcDay, fmtMin, validate, summarize, autoFill, workDay, shortDay, offDay, CHOLHAMOED_VACATION_NOTE, vacationValue,
 } from './report.js';
 import {
   h, clear, icon, toast, confirmDialog, debounce, normalizeTime, formatDateTime, formatDays,
@@ -55,23 +55,51 @@ export async function showMonth(ctx, ym) {
   };
   setSaveState('saved');
 
-  const doSave = async () => {
-    setSaveState('saving');
-    try {
-      current = await store.saveReport(ym, days);
-      setSaveState('saved');
-      refreshStatus();
-    } catch (err) {
-      setSaveState('error');
-      if (err.status === 401) {
-        toast('החיבור פג – יש להתחבר מחדש', 'error');
-        return;
+  // שמירה אוטומטית אחרי כל שינוי. השמירות יוצאות אחת אחרי השנייה (לא במקביל),
+  // וכל שמירה שולחת את המצב העדכני – כך ששמירה ישנה אף פעם לא דורסת חדשה.
+  let chain = Promise.resolve();
+  let queued = false;
+  let dirty = false;
+  const doSave = () => {
+    if (queued) return chain;
+    queued = true;
+    chain = chain.then(async () => {
+      queued = false;
+      dirty = false;
+      setSaveState('saving');
+      try {
+        current = await store.saveReport(ym, days);
+        if (!dirty && !queued) setSaveState('saved');
+        refreshStatus();
+      } catch (err) {
+        dirty = true;
+        setSaveState('error');
+        if (err.status === 401) {
+          toast('החיבור פג – יש להתחבר מחדש', 'error');
+          return;
+        }
+        setTimeout(() => doSave(), 5000);
       }
-      setTimeout(() => save(), 5000);
-    }
+    });
+    return chain;
   };
-  const save = debounce(doSave, 600);
-  window.onbeforeunload = () => (saveState !== 'saved' ? true : undefined);
+  const save = debounce(doSave, 500);
+  /** יש שינוי: מסמנים "שומר…" מיד. שינוי בלחיצה – נשמר מיד; הקלדה בהערה – חצי שנייה אחרי שמפסיקים להקליד */
+  const markDirty = ({ typing = false } = {}) => {
+    dirty = true;
+    if (saveState !== 'saving') setSaveState('saving');
+    if (typing) save();
+    else save.flush();
+  };
+  // סגירת הלשונית לפני שהשמירה הסתיימה: שולחים מיד (keepalive) ומזהירים
+  window.onbeforeunload = () => {
+    if (saveState === 'saved') return undefined;
+    save.flush();
+    return true;
+  };
+  window.onpagehide = () => {
+    if (saveState !== 'saved') save.flush();
+  };
 
   // ---------- כותרת ----------
 
@@ -215,18 +243,18 @@ export async function showMonth(ctx, ym) {
     for (const [iso, row] of rows) updateRowComputed(iso, row);
   }
 
-  function mutate(iso, next, { rerender = false } = {}) {
+  function mutate(iso, next, { rerender = false, typing = false } = {}) {
     if (next == null) delete days[iso];
     else days[iso] = next;
     if (rerender) replaceRow(iso);
     refreshComputed();
-    save();
+    markDirty({ typing });
   }
 
-  function patch(iso, fields) {
+  function patch(iso, fields, opts = {}) {
     const d = { type: '', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: '', ...(days[iso] || {}), ...fields };
-    if (!d.type && !d.note) mutate(iso, null);
-    else mutate(iso, d);
+    if (!d.type && !d.note) mutate(iso, null, opts);
+    else mutate(iso, d, opts);
   }
 
   function setType(iso, type) {
@@ -322,7 +350,8 @@ export async function showMonth(ctx, ym) {
     const note = h('input', {
       class: 'note', type: 'text', maxlength: 60, value: day?.note || '', placeholder: weekend ? '' : 'הערה',
       'aria-label': `הערה ${formatShort(iso)}`, dataset: { field: 'note' },
-      oninput: () => patch(iso, { note: note.value }),
+      oninput: () => patch(iso, { note: note.value }, { typing: true }),
+      onchange: () => save.flush(),
     });
 
     const dateCell = h('div', { class: 'date-cell' },
@@ -353,10 +382,9 @@ export async function showMonth(ctx, ym) {
       row.querySelector('.row-extra').append(h('div', { class: 'quick' },
         h('span', { class: 'quick-q' }, icon('alert', 16), ` ${ev.name} – מה היה ביום הזה?`),
         h('button', { class: 'chip', onclick: () => mutate(iso, shortDay(settings(), ev.name), { rerender: true }) }, `עבדתי ${s.start}–${s.end} (ללא הפסקה)`),
-        // ערב חג: לא עובדים ולא נספר כחופש. חול המועד: חופש נספר כחצי יום.
-        ev.kind === 'cholhamoed'
-          ? h('button', { class: 'chip', onclick: () => mutate(iso, { type: 'vacation', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: CHOLHAMOED_VACATION_NOTE }, { rerender: true }) }, 'חופש (נספר חצי יום)')
-          : h('button', { class: 'chip', onclick: () => mutate(iso, offDay(ev.name), { rerender: true }) }, `לא עבדתי – ${ev.name}`),
+        // "לא עבדתי" בחול המועד נספר בסיכומים כחצי יום חופש; בערב חג – לא נספר
+        h('button', { class: 'chip', title: ev.kind === 'cholhamoed' ? 'נספר בסיכומים כחצי יום חופש' : null, onclick: () => mutate(iso, offDay(ev.name), { rerender: true }) },
+          `לא עבדתי – ${ev.name}${ev.kind === 'cholhamoed' ? ' (חצי יום חופש)' : ''}`),
         h('button', { class: 'chip', onclick: () => mutate(iso, workDay(profile(), ev.name), { rerender: true }) }, 'יום מלא'),
         ev.kind === 'cholhamoed' ? null
           : h('button', { class: 'chip', onclick: () => mutate(iso, { type: 'vacation', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: 'חופש' }, { rerender: true }) }, 'חופש')));
@@ -369,7 +397,10 @@ export async function showMonth(ctx, ym) {
     const day = days[iso];
     const { net } = calcDay(iso, day, profile().breakMin);
     const netEl = row.querySelector('.net');
-    netEl.textContent = day?.type && TYPE_BY_ID[day.type]?.hours !== 'none' ? fmtMin(net) : (day?.type ? '—' : '');
+    const halfVacation = day?.type && TYPE_BY_ID[day.type]?.hours === 'none' && vacationValue(iso, day, settings().special) === 0.5;
+    netEl.textContent = day?.type && TYPE_BY_ID[day.type]?.hours !== 'none' ? fmtMin(net) : (halfVacation ? '½ חופש' : (day?.type ? '—' : ''));
+    netEl.title = halfVacation ? 'יום בחול המועד שלא עבדו בו – נספר כחצי יום חופש' : '';
+    netEl.classList.toggle('half-vac', !!halfVacation);
     const mine = issues.filter((i) => i.date === iso);
     const ev = primaryEvent(iso, settings().special);
     const pending = !day?.type && ev && ATTENTION_KINDS.has(ev.kind) && !isWeekend(iso);
@@ -413,7 +444,7 @@ export async function showMonth(ctx, ym) {
     days = res.days;
     for (const iso of dates) replaceRow(iso);
     refreshComputed();
-    save();
+    markDirty();
     const pend = res.pending.length;
     toast(pend
       ? `מולאו ${res.filled} ימים. ${pend} ימים מיוחדים (ערב חג / חוה״מ) מסומנים בכתום ומחכים לבחירה.`
@@ -427,7 +458,7 @@ export async function showMonth(ctx, ym) {
     days = {};
     for (const iso of dates) replaceRow(iso);
     refreshComputed();
-    save();
+    markDirty();
   }
 
   async function send() {

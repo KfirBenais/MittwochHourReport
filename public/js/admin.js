@@ -4,7 +4,7 @@ import { monthLabel, shiftMonth, todayISO, ymOf, KIND_LABELS } from './calendar.
 import { fmtMin } from './report.js';
 import { POLICY_LABELS, profileForReport, settingsForReport } from './defaults.js';
 import {
-  h, clear, icon, toast, modal, confirmDialog, formatDays, normalizeTime, formatDateTime,
+  h, clear, icon, toast, modal, confirmDialog, formatDays, normalizeTime, formatDateTime, autosaver,
 } from './ui.js';
 import { downloadExcel } from './send.js';
 import { buildSubject, buildFileName } from './email.js';
@@ -193,12 +193,20 @@ export function showSettings(ctx) {
   const { main, store } = ctx;
   const s = structuredClone(ctx.settings);
 
+  // כל שינוי נשמר אוטומטית (מועדים מיוחדים בלי שם/תאריך לא נשמרים עד שממלאים אותם)
+  const saver = autosaver(async () => {
+    ctx.settings = await store.saveSettings({ ...s, special: s.special.filter((x) => x.date && x.name.trim()) });
+  });
+  const changed = () => saver.change();
+  const changedNow = () => saver.change({ now: true });
+  window.onpagehide = () => saver.flush();
+
   const text = (key, label, hint, attrs = {}, preview = null) => {
     const prev = preview ? h('span', { class: 'preview' }) : null;
     const update = () => { if (prev) prev.textContent = `לדוגמה: ${preview()}`; };
     const el = h('label', { class: 'field' },
       h('span', {}, label),
-      h('input', { type: 'text', value: s[key] || '', ...attrs, oninput: (e) => { s[key] = e.target.value; update(); } }),
+      h('input', { type: 'text', value: s[key] || '', ...attrs, oninput: (e) => { s[key] = e.target.value; update(); changed(); } }),
       hint ? h('small', {}, hint, prev) : null);
     update();
     return el;
@@ -217,6 +225,7 @@ export function showSettings(ctx) {
         input.classList.remove('invalid');
         input.value = v;
         obj[key] = v;
+        changedNow();
       },
     });
     return h('label', { class: 'field inline' }, h('span', {}, label), input);
@@ -224,39 +233,23 @@ export function showSettings(ctx) {
 
   const policy = (key, label) => h('label', { class: 'field' },
     h('span', {}, label),
-    h('select', { onchange: (e) => { s.policies[key] = e.target.value; } },
+    h('select', { onchange: (e) => { s.policies[key] = e.target.value; changedNow(); } },
       Object.entries(POLICY_LABELS).map(([v, l]) => h('option', { value: v, selected: s.policies[key] === v }, l))));
 
   const specialList = h('div', { class: 'special-list' });
   const renderSpecial = () => clear(specialList,
     s.special.length ? null : h('p', { class: 'muted small' }, 'אין מועדים מיוחדים.'),
     s.special.map((sp, i) => h('div', { class: 'special-row' },
-      h('input', { type: 'text', class: 'sp-name', value: sp.name, placeholder: 'שם המועד (למשל: יום חברה)', 'aria-label': 'שם המועד', oninput: (e) => { sp.name = e.target.value; } }),
-      h('input', { type: 'date', value: sp.date, 'aria-label': 'תאריך', onchange: (e) => { sp.date = e.target.value; } }),
-      h('select', { 'aria-label': 'סוג', onchange: (e) => { sp.kind = e.target.value; } },
+      h('input', { type: 'text', class: 'sp-name', value: sp.name, placeholder: 'שם המועד (למשל: יום חברה)', 'aria-label': 'שם המועד', oninput: (e) => { sp.name = e.target.value; changed(); } }),
+      h('input', { type: 'date', value: sp.date, 'aria-label': 'תאריך', onchange: (e) => { sp.date = e.target.value; changedNow(); } }),
+      h('select', { 'aria-label': 'סוג', onchange: (e) => { sp.kind = e.target.value; changedNow(); } },
         Object.entries(KIND_LABELS).map(([v, l]) => h('option', { value: v, selected: sp.kind === v }, v === 'holiday' ? 'חג / יום חופש' : l))),
-      h('button', { class: 'icon-btn', 'aria-label': 'הסרה', onclick: () => { s.special.splice(i, 1); renderSpecial(); } }, icon('trash', 16)))),
+      h('button', { class: 'icon-btn', 'aria-label': 'הסרה', onclick: () => { s.special.splice(i, 1); renderSpecial(); changedNow(); } }, icon('trash', 16)))),
     h('button', { class: 'btn ghost small', onclick: () => { s.special.push({ date: todayISO(), name: '', kind: 'holiday' }); renderSpecial(); } }, icon('plus', 14), ' הוספת מועד'));
   renderSpecial();
 
-  const saveBtn = h('button', {
-    class: 'btn primary big',
-    onclick: async () => {
-      saveBtn.disabled = true;
-      try {
-        s.special = s.special.filter((x) => x.date && x.name.trim());
-        ctx.settings = await store.saveSettings(s);
-        toast('ההגדרות נשמרו', 'success');
-        showSettings(ctx);
-      } catch (err) {
-        toast(err.message, 'error');
-        saveBtn.disabled = false;
-      }
-    },
-  }, icon('check'), ' שמירת הגדרות');
-
   clear(main,
-    h('section', { class: 'page-head' }, h('h1', {}, 'הגדרות')),
+    h('section', { class: 'page-head row' }, h('h1', {}, 'הגדרות'), saver.indicator),
     h('div', { class: 'grid-2' },
       h('section', { class: 'card' },
         h('h2', {}, icon('mail'), ' המייל'),
@@ -285,10 +278,9 @@ export function showSettings(ctx) {
           h('p', { class: 'muted small' }, `נרשמים רק עם מייל @${store.health?.emailDomain || 'ncr.co.il'}, ונכנסים מיד.`),
           text('teamCode', 'קוד צוות (לא חובה)', 'אם ממלאים – מי שנרשם צריך להזין את הקוד. ריק = לא נדרש.'),
           h('label', { class: 'check' },
-            h('input', { type: 'checkbox', checked: !!s.requireApproval, onchange: (e) => { s.requireApproval = e.target.checked; } }),
+            h('input', { type: 'checkbox', checked: !!s.requireApproval, onchange: (e) => { s.requireApproval = e.target.checked; changedNow(); } }),
             h('span', {}, 'משתמש חדש נכנס רק אחרי אישור שלי')),
-        ] : null)),
-    h('div', { class: 'page-actions' }, saveBtn));
+        ] : null)));
 }
 
 // כרטיס בדיקת שליחת מיילים מהשרת (איפוס סיסמה / אימות הרשמה)

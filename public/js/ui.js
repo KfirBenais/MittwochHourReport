@@ -268,3 +268,50 @@ export function passwordInput({ name = 'password', autocomplete = 'current-passw
   }, icon('eye', 18));
   return { el: h('div', { class: 'pw-field', dir: 'ltr' }, input, btn), input };
 }
+
+// ---------- שמירה אוטומטית ----------
+
+/**
+ * שמירה אוטומטית אחרי כל שינוי, עם חיווי "שומר… / נשמר".
+ * השמירות יוצאות אחת אחרי השנייה, וכל אחת שולחת את המצב העדכני.
+ * change() – הקלדה (נשמר חצי שנייה אחרי שמפסיקים); change({ now: true }) – בחירה/לחיצה (נשמר מיד).
+ */
+export function autosaver(saveFn, { delay = 500 } = {}) {
+  const indicator = h('span', { class: 'save-state saved' }, icon('check', 14), ' נשמר אוטומטית');
+  let chain = Promise.resolve();
+  let queued = false;
+  let dirty = false;
+  const show = (state, msg) => {
+    indicator.className = `save-state ${state}`;
+    clear(indicator, state === 'saving' ? 'שומר…'
+      : state === 'error' ? [icon('alert', 14), ` ${msg || 'לא נשמר'}`]
+        : [icon('check', 14), ' נשמר']);
+  };
+  const run = () => {
+    if (queued) return chain;
+    queued = true;
+    chain = chain.then(async () => {
+      queued = false;
+      dirty = false;
+      show('saving');
+      try {
+        await saveFn();
+        if (!dirty && !queued) show('saved');
+      } catch (err) {
+        show('error', err.message);
+      }
+    });
+    return chain;
+  };
+  const later = debounce(run, delay);
+  return {
+    indicator,
+    change({ now = false } = {}) {
+      dirty = true;
+      show('saving');
+      if (now) later.flush();
+      else later();
+    },
+    flush: () => later.flush(),
+  };
+}
