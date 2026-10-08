@@ -63,8 +63,8 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 
 **הרצה ידנית לבדיקה** (בלי להתקין כשירות): לחיצה כפולה על `start.bat`.
 
-**פרסום גרסה חדשה (למפתח):** מעדכנים את `version` ב-`package.json`, ודוחפים תגית – למשל `git tag v1.0.1 && git push origin v1.0.1`.
-GitHub בונה את ה-ZIP ומפרסם אותו ב-Releases אוטומטית.
+**פרסום גרסה חדשה (למפתח):** מעדכנים את `version` ב-`package.json` ודוחפים ל-`main`.
+GitHub מריץ את הבדיקות, בונה את ה-ZIP ומפרסם אותו ב-Releases אוטומטית.
 
 ### צ'קליסט לבדיקה ראשונה
 

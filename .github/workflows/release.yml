@@ -1,9 +1,11 @@
-# יוצר חבילת התקנה (ZIP) לכל גרסה: דוחפים תגית כמו v1.0.1 והחבילה מופיעה בדף Releases.
-name: Release package
+# בדיקות בכל דחיפה ל-main, וחבילת התקנה (ZIP) בדף Releases לכל גרסה חדשה:
+# משנים את "version" ב-package.json, דוחפים – והחבילה HoursReport-<גרסה>.zip מתפרסמת אוטומטית.
+name: Tests and release package
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,6 +13,8 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,19 +25,27 @@ jobs:
       - name: Tests
         run: npm test
 
-      - name: Build the package
+      - name: Is this a new version?
+        id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "Release v$VERSION already exists - nothing to publish."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and publish the package
+        if: steps.version.outputs.new == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
           NAME="HoursReport-$VERSION"
           mkdir -p "dist/$NAME"
           cp -r server.js mailer.js package.json public run-server.cmd start.bat install-windows.ps1 config.example.json README.md "dist/$NAME/"
           (cd dist && zip -qr "$NAME.zip" "$NAME")
-          echo "NAME=$NAME" >> "$GITHUB_ENV"
-
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" "dist/$NAME.zip" \
-            --title "גרסה ${GITHUB_REF_NAME#v}" \
-            --notes "להתקנה/עדכון: מחלצים את $NAME.zip בשרת ומריצים כמנהל: powershell -ExecutionPolicy Bypass -File .\\install-windows.ps1"
+          gh release create "v$VERSION" "dist/$NAME.zip" \
+            --target "$GITHUB_SHA" \
+            --title "גרסה $VERSION" \
+            --notes "התקנה / עדכון: מעתיקים את $NAME.zip לשרת, מחלצים, ומריצים ב-PowerShell כמנהל מתוך התיקייה: powershell -ExecutionPolicy Bypass -File .\\install-windows.ps1"
