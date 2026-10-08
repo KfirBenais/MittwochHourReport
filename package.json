@@ -1,0 +1,14 @@
+{
+  "name": "ncr-hours-report",
+  "version": "1.0.0",
+  "private": true,
+  "description": "אתר דיווח שעות חודשי לצוות – מילוי שעות, התראות חגים, יצירת אקסל ומייל לכוכי",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
