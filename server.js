@@ -17,6 +17,7 @@ import { todayISO } from './public/js/calendar.js';
 import { createMailer } from './mailer.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 const SESSION_DAYS = 30;
 const COOKIE = 'hr_sid';
@@ -376,6 +377,7 @@ export async function createApp({
   route('GET', /^\/api\/health$/, () => ({
     ok: true,
     mode: 'server',
+    version: VERSION,
     needsSetup: db.users.length === 0,
     teamCodeRequired: db.users.length > 0 && !!settings().teamCode,
     emailDomain,
@@ -833,8 +835,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     process.exit(1);
   });
   server.listen(port, host, () => {
-    log(`started on port ${port} (data: ${dataDir})`);
-    console.log('\n  דיווח שעות פועל:');
+    log(`version ${VERSION} started on port ${port} (data: ${dataDir})`);
+    console.log(`\n  דיווח שעות ${VERSION} פועל:`);
     console.log(`    ${config.publicUrl}   ← הכתובת לצוות`);
     console.log(`    ${scheme}://localhost:${port}`);
     for (const ip of lanAddresses()) console.log(`    ${scheme}://${ip}:${port}`);

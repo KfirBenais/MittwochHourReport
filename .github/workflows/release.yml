@@ -1,0 +1,39 @@
+# יוצר חבילת התקנה (ZIP) לכל גרסה: דוחפים תגית כמו v1.0.1 והחבילה מופיעה בדף Releases.
+name: Release package
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: npm test
+
+      - name: Build the package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="HoursReport-$VERSION"
+          mkdir -p "dist/$NAME"
+          cp -r server.js mailer.js package.json public run-server.cmd start.bat install-windows.ps1 config.example.json README.md "dist/$NAME/"
+          (cd dist && zip -qr "$NAME.zip" "$NAME")
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/$NAME.zip" \
+            --title "גרסה ${GITHUB_REF_NAME#v}" \
+            --notes "להתקנה/עדכון: מחלצים את $NAME.zip בשרת ומריצים כמנהל: powershell -ExecutionPolicy Bypass -File .\\install-windows.ps1"

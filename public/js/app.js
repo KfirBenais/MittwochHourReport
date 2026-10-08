@@ -30,7 +30,7 @@ function footer() {
   return h('footer', { class: 'footer' },
     ctx.store?.mode === 'local'
       ? h('span', {}, icon('alert', 14), ' מצב מקומי – הנתונים נשמרים רק בדפדפן הזה. לעבודת צוות יש להריץ את השרת (ראו README). מומלץ לגבות מדי פעם מהפרופיל.')
-      : h('span', {}, 'I.E. Mittwoch & Sons · NCR · דיווח שעות'));
+      : h('span', {}, `I.E. Mittwoch & Sons · NCR · דיווח שעות${ctx.store?.health?.version ? ` · גרסה ${ctx.store.health.version}` : ''}`));
 }
 
 function renderShell() {

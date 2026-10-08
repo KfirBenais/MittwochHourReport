@@ -1,49 +1,72 @@
 <#
-  Hours Report - install the website as a background service on Windows (Server).
+  Hours Report - install / update the website on Windows (Server).
 
-  Run in PowerShell as Administrator, from the HoursReport folder:
-      powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
-  Different port (e.g. if 8080 is taken):
-      powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 -Port 8081
-  Update after copying new files: run the same command again.
-  Remove (the data folder is kept):
-      powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 -Uninstall
+  1. Extract the package ZIP anywhere (for example to Downloads).
+  2. Open PowerShell as Administrator in the extracted folder and run:
+         powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+
+  The site is installed to C:\HoursReport (change with -InstallDir).
+  Updating = extract the new ZIP and run the same command again.
+  The data (data\) and settings (config.json) in the install folder are never overwritten.
+
+  Options:
+      -Port 8081                      use another port (if 8080 is taken)
+      -InstallDir D:\Apps\HoursReport install somewhere else
+      -Uninstall                      remove the service and firewall rule (data is kept)
 
   What it does:
     1. Checks that Node.js 18+ is installed.
-    2. Opens the port in Windows Firewall (inbound TCP).
-    3. Registers a scheduled task "HoursReport" that starts the site when the server boots
+    2. Copies the site files to the install folder (keeps data and config.json).
+    3. Opens the port in Windows Firewall (inbound TCP).
+    4. Registers a scheduled task "HoursReport" that starts the site when the server boots
        (as SYSTEM, no login needed) and restarts it automatically if it stops.
-    4. Starts the site and checks that it answers.
+    5. Starts the site and checks that it answers.
 #>
 param(
   [int]$Port = 0,
+  [string]$InstallDir = 'C:\HoursReport',
   [switch]$Uninstall
 )
 
 $ErrorActionPreference = 'Stop'
 $TaskName = 'HoursReport'
 $RuleName = 'Hours Report website'
-$Dir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Source = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Dir = [IO.Path]::GetFullPath($InstallDir)
 $ConfigFile = Join-Path $Dir 'config.json'
+$runner = Join-Path $Dir 'run-server.cmd'
+
+# the files that make up the site (everything else in the install folder - data, config.json, logs - is left alone)
+$AppDirs = @('public')
+$AppFiles = @('server.js', 'mailer.js', 'package.json', 'run-server.cmd', 'start.bat', 'install-windows.ps1', 'config.example.json', 'README.md')
 
 function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Write-Fail($msg) { Write-Host "  [!!] $msg" -ForegroundColor Red }
 
-$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  Write-Fail 'Please run PowerShell as Administrator (right click > Run as administrator).'
-  exit 1
+function Copy-AppFiles([string]$From, [string]$To) {
+  New-Item -ItemType Directory -Force -Path $To | Out-Null
+  foreach ($d in $AppDirs) {
+    $target = Join-Path $To $d
+    if (Test-Path $target) { Remove-Item -Recurse -Force $target }
+    Copy-Item -Recurse -Force (Join-Path $From $d) $target
+  }
+  foreach ($f in $AppFiles) {
+    $src = Join-Path $From $f
+    if (Test-Path $src) { Copy-Item -Force $src (Join-Path $To $f) }
+  }
 }
 
-$runner = Join-Path $Dir 'run-server.cmd'
+function Get-AppVersion([string]$Folder) {
+  $pkg = Join-Path $Folder 'package.json'
+  if (Test-Path $pkg) { return (Get-Content $pkg -Raw -Encoding UTF8 | ConvertFrom-Json).version }
+  return '?'
+}
 
-# stops only the processes of THIS folder (other services on the server are not touched)
+# stops only the processes of the install folder (other services on the server are not touched)
 function Stop-HoursReport {
   if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   }
-  # the task runs a small loop (run-server.cmd) - stop the node process of this folder too
   $serverJs = Join-Path $Dir 'server.js'
   Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cmd.exe'" |
     Where-Object { $_.CommandLine -and ($_.CommandLine -like "*$serverJs*" -or $_.CommandLine -like "*$runner*") } |
@@ -51,9 +74,22 @@ function Stop-HoursReport {
   Start-Sleep -Seconds 1
 }
 
+if (-not $Uninstall) {
+  if (-not (Test-Path (Join-Path $Source 'server.js')) -or -not (Test-Path (Join-Path $Source 'public'))) {
+    Write-Fail 'Run this script from the extracted package folder (server.js and public\ were not found next to it).'
+    exit 1
+  }
+}
+
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  Write-Fail 'Please run PowerShell as Administrator (right click > Run as administrator).'
+  exit 1
+}
+
 Write-Host ''
 Write-Host 'Hours Report - Windows setup' -ForegroundColor Cyan
-Write-Host "Folder: $Dir"
+Write-Host "Install folder: $Dir"
 Write-Host ''
 
 if ($Uninstall) {
@@ -62,7 +98,7 @@ if ($Uninstall) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
   }
   Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-  Write-Ok 'Removed the scheduled task and the firewall rule. The data folder was NOT deleted.'
+  Write-Ok "Removed the scheduled task and the firewall rule. The folder $Dir (with the data) was NOT deleted."
   exit 0
 }
 
@@ -82,7 +118,20 @@ if ([int]($version.Split('.')[0]) -lt 18) {
 }
 Write-Ok "Node.js $version ($node)"
 
-# ---------- 2. Port: -Port parameter > config.json > 8080 ----------
+# ---------- 2. Copy the site ----------
+$oldVersion = $null
+if (Test-Path (Join-Path $Dir 'server.js')) { $oldVersion = Get-AppVersion $Dir }
+Stop-HoursReport
+$sourceFull = [IO.Path]::GetFullPath($Source).TrimEnd('\')
+if ($sourceFull -ine $Dir.TrimEnd('\')) {
+  Copy-AppFiles $Source $Dir
+  if ($oldVersion) { Write-Ok "Updated $oldVersion -> $(Get-AppVersion $Dir) in $Dir (data and config.json kept)" }
+  else { Write-Ok "Version $(Get-AppVersion $Dir) copied to $Dir" }
+} else {
+  Write-Ok "Running from the install folder (version $(Get-AppVersion $Dir))"
+}
+
+# ---------- 3. Port: -Port parameter > config.json > 8080 ----------
 if ($Port -gt 0) {
   if (-not (Test-Path $ConfigFile)) { Copy-Item (Join-Path $Dir 'config.example.json') $ConfigFile }
   $text = [IO.File]::ReadAllText($ConfigFile)
@@ -97,22 +146,21 @@ if ($Port -gt 0) {
   }
 }
 
-Stop-HoursReport
 $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 if ($busy) {
   $owner = (Get-Process -Id ($busy | Select-Object -First 1).OwningProcess -ErrorAction SilentlyContinue).ProcessName
   Write-Fail "Port $Port is already used by another program ($owner)."
-  Write-Host "      Choose another port, for example:  .\install-windows.ps1 -Port 8081"
+  Write-Host '      Choose another port, for example:  .\install-windows.ps1 -Port 8081'
   exit 1
 }
 Write-Ok "Port $Port is free"
 
-# ---------- 3. Firewall ----------
+# ---------- 4. Firewall ----------
 Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $RuleName -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any | Out-Null
 Write-Ok "Windows Firewall: inbound TCP $Port allowed"
 
-# ---------- 4. Background task ----------
+# ---------- 5. Background task ----------
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"`"$runner`" `"$node`"`"" -WorkingDirectory $Dir
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $taskUser = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -120,11 +168,11 @@ $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) 
   -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew `
   -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $taskUser `
-  -Settings $settings -Description 'Hours report website (Node.js) - see README.md' -Force | Out-Null
+  -Settings $settings -Description "Hours report website (Node.js) - $Dir" -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
 Write-Ok "Scheduled task '$TaskName' registered (starts with Windows, restarts automatically)"
 
-# ---------- 5. Check ----------
+# ---------- 6. Check ----------
 $ok = $false
 for ($i = 0; $i -lt 15 -and -not $ok; $i++) {
   Start-Sleep -Seconds 1
@@ -135,10 +183,10 @@ for ($i = 0; $i -lt 15 -and -not $ok; $i++) {
 }
 Write-Host ''
 if (-not $ok) {
-  Write-Fail 'The site did not answer. Check the log: data\logs\console.log'
+  Write-Fail "The site did not answer. Check the log: $Dir\data\logs\console.log"
   exit 1
 }
-Write-Ok 'The site is running!'
+Write-Ok "The site is running! (version $(Get-AppVersion $Dir))"
 Write-Host ''
 Write-Host 'Open from your computer:' -ForegroundColor Cyan
 Write-Host "    http://$($env:COMPUTERNAME.ToLower()):$Port"
@@ -146,5 +194,5 @@ Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
   Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
   ForEach-Object { Write-Host "    http://$($_.IPAddress):$Port" }
 Write-Host ''
-Write-Host 'The first person to register becomes the team admin.'
+if (-not $oldVersion) { Write-Host 'The first person to register becomes the team admin.' }
 Write-Host ''

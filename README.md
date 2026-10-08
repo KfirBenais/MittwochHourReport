@@ -31,53 +31,40 @@
 3. המנהל לוחץ **"שליחת קישור איפוס"** ← **"פתיחת מייל באאוטלוק"** – נפתח מייל מהאאוטלוק שלו לעובד עם קישור חד-פעמי (24 שעות).
 4. העובד פותח את הקישור ובוחר סיסמה חדשה. המנהל לא רואה את הסיסמה.
 
-## הקמה על שרת Windows
+## הקמה על שרת Windows (בלי Git על השרת)
 
 צריך: Windows Server (או Windows 10/11) ברשת המשרד, עם הרשאות מנהל.
 
-**1. להתקין Node.js ו-Git** (PowerShell כמנהל; או מהאתרים nodejs.org ו-git-scm.com):
+**1. במחשב שלך – להוריד את חבילת ההתקנה:**
+בדף [Releases](https://github.com/KfirBenais/MittwochHourReport/releases/latest) מורידים את `HoursReport-<גרסה>.zip`.
+(אפשר גם מדף הריפו: Code ← Download ZIP – זה עובד אותו דבר.)
+
+**2. בשרת – להתקין Node.js (פעם אחת):** מ-[nodejs.org](https://nodejs.org) גרסת LTS (קובץ MSI, "הבא-הבא"), או ב-PowerShell: `winget install OpenJS.NodeJS.LTS`.
+
+**3. בשרת – להעתיק את ה-ZIP, לחלץ (למשל ל-Downloads), ולהריץ ב-PowerShell כמנהל מתוך התיקייה שחולצה:**
 
 ```powershell
-winget install OpenJS.NodeJS.LTS
-winget install Git.Git
-```
-
-אחרי ההתקנה – לסגור ולפתוח מחדש את חלון ה-PowerShell (כמנהל).
-
-**2. להוריד את הקוד:**
-
-```powershell
-git clone https://github.com/KfirBenais/MittwochHourReport.git C:\HoursReport
-```
-
-(הריפו פרטי – בפעם הראשונה ייפתח חלון התחברות ל-GitHub.)
-
-**3. להתקין כשירות קבוע:**
-
-```powershell
-cd C:\HoursReport
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-הסקריפט: פותח את פורט 8080 ב-Firewall של Windows, רושם משימה שמפעילה את האתר עם עליית השרת (בלי שמישהו מחובר) ומפעילה אותו מחדש אם נפל, ובודק שהאתר עונה.
-בסוף הוא מדפיס את הכתובות, למשל `http://hours-srv:8080`.
-פורט אחר (אם 8080 תפוס): `.\install-windows.ps1 -Port 8081`
+הסקריפט מעתיק את האתר ל-`C:\HoursReport`, פותח את פורט 8080 ב-Firewall של Windows, רושם משימה שמפעילה את האתר עם עליית השרת
+(בלי שמישהו מחובר) ומפעילה אותו מחדש אם נפל, ובודק שהאתר עונה. בסוף הוא מדפיס את הכתובות, למשל `http://hours-srv:8080`.
+
+- פורט אחר (אם 8080 תפוס): `.\install-windows.ps1 -Port 8081`
+- תיקייה אחרת: `.\install-windows.ps1 -InstallDir D:\Apps\HoursReport`
 
 **4. להתחבר מהמחשב שלך:** לפתוח בדפדפן את הכתובת שהודפסה. **מי שנרשם ראשון הופך למנהל הצוות.**
 אם לא נפתח – לוודא שהפורט פתוח ברשת בין המחשבים לשרת (Firewall של החברה).
+מספר הגרסה המותקנת מופיע בתחתית האתר.
 
-**עדכון גרסה:**
+**עדכון גרסה:** מורידים ZIP חדש, מחלצים בשרת ומריצים את אותה פקודה. הנתונים (`C:\HoursReport\data`) וההגדרות (`config.json`) לא נדרסים.
 
-```powershell
-git -C C:\HoursReport pull
-powershell -ExecutionPolicy Bypass -File C:\HoursReport\install-windows.ps1
-```
-
-הנתונים (`data\`) וההגדרות (`config.json`) לא נדרסים בעדכון.
-
-**הסרה:** `.\install-windows.ps1 -Uninstall` (תיקיית הנתונים נשארת).
+**הסרה:** `.\install-windows.ps1 -Uninstall` (התיקייה עם הנתונים נשארת).
 
 **הרצה ידנית לבדיקה** (בלי להתקין כשירות): לחיצה כפולה על `start.bat`.
+
+**פרסום גרסה חדשה (למפתח):** מעדכנים את `version` ב-`package.json`, ודוחפים תגית – למשל `git tag v1.0.1 && git push origin v1.0.1`.
+GitHub בונה את ה-ZIP ומפרסם אותו ב-Releases אוטומטית.
 
 ### צ'קליסט לבדיקה ראשונה
 
@@ -87,6 +74,7 @@ powershell -ExecutionPolicy Bypass -File C:\HoursReport\install-windows.ps1
 - [ ] "שליחה לכוכי" ← קובץ ה-eml נפתח באאוטלוק עם האקסל מצורף (לבדיקה: לשנות זמנית את הנמען לעצמי בהגדרות).
 - [ ] "שכחתי סיסמה" ← הבקשה מופיעה במסך הצוות ← קישור ← סיסמה חדשה עובדת.
 - [ ] כיבוי והדלקה של השרת ← האתר עולה לבד.
+- [ ] עדכון: הרצת הסקריפט מ-ZIP חדש ← הגרסה בתחתית האתר מתעדכנת והנתונים נשארים.
 
 ## הגדרות (לא חובה)
 
@@ -115,7 +103,8 @@ npm test
 | קובץ | תפקיד |
 |---|---|
 | `server.js` | שרת Node ללא תלויות: קבצים סטטיים, API, כניסה, אחסון JSON |
-| `install-windows.ps1`, `run-server.cmd` | התקנה כשירות קבוע ב-Windows |
+| `install-windows.ps1`, `run-server.cmd` | התקנה/עדכון כשירות קבוע ב-Windows |
+| `.github/workflows/release.yml` | בניית חבילת ההתקנה (ZIP) לכל גרסה |
 | `public/js/calendar.js` | לוח עברי וחגי ישראל |
 | `public/js/report.js` | סוגי ימים, חישוב שעות (כמו באקסל), מילוי אוטומטי, בדיקות |
 | `public/js/excel.js` | יצירת האקסל לפי תבנית "נוסח 1" (ExcelJS) |
