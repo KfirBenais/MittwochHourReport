@@ -644,7 +644,7 @@ export async function createApp({
             verified: u.verified !== false,
             approved: u.approved !== false,
             resetRequestedAt: u.resetRequestedAt || null,
-            summary: summarize(ym, r.days, profile),
+            summary: summarize(ym, r.days, profile, s.special),
             errors: issues.filter((i) => i.level === 'error').length,
             filledDays: Object.values(r.days).filter((d) => d.type).length,
             sentAt: r.sentAt,

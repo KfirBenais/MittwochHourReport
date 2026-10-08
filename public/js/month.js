@@ -5,7 +5,7 @@ import {
   WEEKDAY_LETTERS, WEEKDAY_NAMES, ATTENTION_KINDS, KIND_LABELS, todayISO, ymOf, firstWorkday, monthEvents, groupEvents, parseISO,
 } from './calendar.js';
 import {
-  DAY_TYPES, TYPE_BY_ID, calcDay, fmtMin, validate, summarize, autoFill, workDay, shortDay, offDay,
+  DAY_TYPES, TYPE_BY_ID, calcDay, fmtMin, validate, summarize, autoFill, workDay, shortDay, offDay, CHOLHAMOED_VACATION_NOTE,
 } from './report.js';
 import {
   h, clear, icon, toast, confirmDialog, debounce, normalizeTime, formatDateTime, formatDays,
@@ -155,12 +155,12 @@ export async function showMonth(ctx, ym) {
     let total = 0;
     for (const [k, r] of Object.entries(yearMonths)) {
       if (k === ym) continue;
-      total += summarize(k, r.days || {}, profile())[key];
+      total += summarize(k, r.days || {}, profile(), settings().special)[key];
     }
     return total + extra;
   };
   const renderStats = (issues) => {
-    const s = summarize(ym, days, profile());
+    const s = summarize(ym, days, profile(), settings().special);
     const errors = issues.filter((i) => i.level === 'error').length;
     const card = (value, label, sub, cls = '') => h('div', { class: `stat ${cls}` },
       h('div', { class: 'stat-value' }, value),
@@ -238,12 +238,17 @@ export async function showMonth(ctx, ym) {
     const t = TYPE_BY_ID[type];
     const ev = primaryEvent(iso, settings().special);
     const evName = ev && ev.kind !== 'info' ? ev.name : '';
-    const autoNotes = new Set(['', evName, ...DAY_TYPES.map((x) => x.note)]);
-    const note = autoNotes.has(prev.note || '') ? (type === 'work' || type === 'holiday' ? evName : t.note) : prev.note;
+    const halfDayEvent = ev && (ev.kind === 'cholhamoed' || ev.kind === 'fast');
+    const autoNotes = new Set(['', evName, CHOLHAMOED_VACATION_NOTE, ...DAY_TYPES.map((x) => x.note)]);
+    let autoNote = type === 'work' || type === 'holiday' ? evName : t.note;
+    if (type === 'vacation' && ev?.kind === 'cholhamoed') autoNote = CHOLHAMOED_VACATION_NOTE;
+    const note = autoNotes.has(prev.note || '') ? autoNote : prev.note;
     const next = { in1: '', out1: '', in2: '', out2: '', noBreak: false, ...prev, type, note };
     if (t.hours === 'none') Object.assign(next, { in1: '', out1: '', in2: '', out2: '', noBreak: false });
     else if (!next.in1 && !next.out1) {
-      if (type === 'work') Object.assign(next, { in1: profile().start, out1: profile().end });
+      // בחול המועד / תשעה באב יום העבודה הוא יום קצר ללא הפסקה
+      if (type === 'work' && halfDayEvent) Object.assign(next, { in1: settings().shortDay.start, out1: settings().shortDay.end, noBreak: true });
+      else if (type === 'work') Object.assign(next, { in1: profile().start, out1: profile().end });
       if (type === 'halfVacation' || type === 'halfSick') Object.assign(next, { in1: profile().start, out1: profile().halfDayEnd });
     }
     mutate(iso, next, { rerender: true });
@@ -347,10 +352,14 @@ export async function showMonth(ctx, ym) {
       const s = settings().shortDay;
       row.querySelector('.row-extra').append(h('div', { class: 'quick' },
         h('span', { class: 'quick-q' }, icon('alert', 16), ` ${ev.name} – מה היה ביום הזה?`),
-        h('button', { class: 'chip', onclick: () => mutate(iso, shortDay(settings(), ev.name), { rerender: true }) }, `יום קצר ${s.start}–${s.end} (ללא הפסקה)`),
-        h('button', { class: 'chip', onclick: () => mutate(iso, offDay(ev.name), { rerender: true }) }, `לא עבדתי – ${ev.name}`),
+        h('button', { class: 'chip', onclick: () => mutate(iso, shortDay(settings(), ev.name), { rerender: true }) }, `עבדתי ${s.start}–${s.end} (ללא הפסקה)`),
+        // ערב חג: לא עובדים ולא נספר כחופש. חול המועד: חופש נספר כחצי יום.
+        ev.kind === 'cholhamoed'
+          ? h('button', { class: 'chip', onclick: () => mutate(iso, { type: 'vacation', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: CHOLHAMOED_VACATION_NOTE }, { rerender: true }) }, 'חופש (נספר חצי יום)')
+          : h('button', { class: 'chip', onclick: () => mutate(iso, offDay(ev.name), { rerender: true }) }, `לא עבדתי – ${ev.name}`),
         h('button', { class: 'chip', onclick: () => mutate(iso, workDay(profile(), ev.name), { rerender: true }) }, 'יום מלא'),
-        h('button', { class: 'chip', onclick: () => mutate(iso, { type: 'vacation', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: 'חופש' }, { rerender: true }) }, 'חופש')));
+        ev.kind === 'cholhamoed' ? null
+          : h('button', { class: 'chip', onclick: () => mutate(iso, { type: 'vacation', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: 'חופש' }, { rerender: true }) }, 'חופש')));
     }
     row.querySelector('.row-extra').append(h('div', { class: 'row-issues' }));
     return row;

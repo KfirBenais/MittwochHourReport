@@ -9,9 +9,9 @@ export const MONTH_NAMES = ['ינואר', 'פברואר', 'מרץ', 'אפריל'
 
 // סוגי מועדים:
 //   holiday    – חג / שבתון: לא יום עבודה
-//   erev       – ערב חג: דורש החלטה (יום קצר / לא עובדים)
-//   cholhamoed – חול המועד: דורש החלטה
-//   fast       – תשעה באב: דורש החלטה (בדרך כלל יום קצר)
+//   erev       – ערב חג: לא עובדים ולא נספר כיום חופש
+//   cholhamoed – חול המועד: חצי יום עבודה (08:00–13:00); חופש ביום כזה נספר כחצי יום
+//   fast       – תשעה באב: יום קצר
 //   info       – מועד לידיעה בלבד (חנוכה, פורים, צומות...) – יום עבודה רגיל
 export const KIND_LABELS = {
   holiday: 'חג',
@@ -185,7 +185,7 @@ export function holidaysForYear(gy) {
     add(D('Tishri', 14), 'ערב סוכות', 'erev');
     add(D('Tishri', 15), 'סוכות', 'holiday');
     for (let d = 16; d <= 20; d++) add(D('Tishri', d), 'חול המועד סוכות', 'cholhamoed');
-    add(D('Tishri', 21), 'הושענא רבה', 'cholhamoed');
+    add(D('Tishri', 21), 'הושענא רבה', 'erev'); // ערב שמחת תורה
     add(D('Tishri', 22), 'שמחת תורה', 'holiday');
 
     // חנוכה – 8 ימים החל מכ״ה בכסלו
@@ -204,7 +204,7 @@ export function holidaysForYear(gy) {
     add(D('Nisan', 14), 'ערב פסח', 'erev');
     add(D('Nisan', 15), 'פסח', 'holiday');
     for (let d = 16; d <= 19; d++) add(D('Nisan', d), 'חול המועד פסח', 'cholhamoed');
-    add(D('Nisan', 20), 'ערב שביעי של פסח', 'cholhamoed');
+    add(D('Nisan', 20), 'ערב שביעי של פסח', 'erev');
     add(D('Nisan', 21), 'שביעי של פסח', 'holiday');
 
     let shoah = D('Nisan', 27);
@@ -219,7 +219,7 @@ export function holidaysForYear(gy) {
     else if (wd(iyar5) === 6) atzmaut = D('Iyar', 3);
     else if (wd(iyar5) === 1) atzmaut = D('Iyar', 6);
     if (atzmaut) {
-      add(addDays(atzmaut, -1), 'יום הזיכרון (ערב יום העצמאות)', 'erev');
+      add(addDays(atzmaut, -1), 'יום הזיכרון (ערב יום העצמאות)', 'info');
       add(atzmaut, 'יום העצמאות', 'holiday');
     }
     add(D('Iyar', 18), 'ל״ג בעומר', 'info');

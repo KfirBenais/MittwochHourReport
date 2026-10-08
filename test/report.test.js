@@ -33,10 +33,10 @@ test('September 2026 – holidays, sick and vacation = 107:15', () => {
     '2026-09-14': { type: 'sick', note: 'מחלה' },
     '2026-09-17': { type: 'vacation', note: 'חופש' },
   };
-  const ask = autoFill('2026-09', pre, settings(), profile);
-  // ערב יום כיפור וחול המועד נשארים להחלטה
+  const ask = autoFill('2026-09', pre, settings({ erev: 'ask', cholhamoed: 'ask' }), profile);
+  // במדיניות "להשאיר לבחירה" – ערב יום כיפור וחול המועד נשארים להחלטה
   assert.deepEqual(ask.pending, ['2026-09-20', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30']);
-  const errs = validate('2026-09', ask.days, settings(), profile);
+  const errs = validate('2026-09', ask.days, settings({ erev: 'ask', cholhamoed: 'ask' }), profile);
   assert.equal(errs.length, 5);
   assert.match(errs[0].msg, /ערב יום כיפור/);
 
@@ -48,6 +48,31 @@ test('September 2026 – holidays, sick and vacation = 107:15', () => {
   assert.equal(s.sick, 1);
   assert.equal(s.vacation, 1);
   assert.deepEqual(validate('2026-09', days, settings(), profile), []);
+});
+
+test('default policy: erev chag is a day off, chol hamoed is 08:00–13:00, vacation on chol hamoed counts half', () => {
+  const pre = { '2026-09-14': { type: 'sick', note: 'מחלה' }, '2026-09-17': { type: 'vacation', note: 'חופש' } };
+  const { days, pending } = autoFill('2026-09', pre, settings(), profile);
+  assert.deepEqual(pending, []);
+  assert.deepEqual(days['2026-09-20'], { type: 'holiday', in1: '', out1: '', in2: '', out2: '', noBreak: false, note: 'ערב יום כיפור' });
+  assert.deepEqual(days['2026-09-28'], { type: 'work', in1: '08:00', out1: '13:00', in2: '', out2: '', noBreak: true, note: 'חול המועד סוכות' });
+  let s = summarize('2026-09', days, profile);
+  // 107:15 + 4 ימי חוה"מ × 5:00
+  assert.equal(fmtMin(s.netMin), '127:15');
+  assert.equal(s.vacation, 1, 'erev / chag are not vacation days');
+  assert.equal(s.holiday, 3); // ראש השנה (13/9), ערב יום כיפור, יום כיפור
+
+  // חופש בחול המועד = חצי יום חופש; חופש ביום רגיל = יום שלם
+  days['2026-09-29'] = { type: 'vacation', note: 'חצי יום חופש (חוה״מ)' };
+  days['2026-09-30'] = { type: 'vacation', note: 'חופש' };
+  s = summarize('2026-09', days, profile);
+  assert.equal(s.vacation, 2);
+  assert.equal(fmtMin(s.netMin), '117:15');
+
+  // October: Oct 1 is chol hamoed (half day), Hoshana Raba / Simchat Torah fall on the weekend
+  const oct = autoFill('2026-10', {}, settings(), profile).days;
+  assert.equal(oct['2026-10-01'].out1, '13:00');
+  assert.equal(oct['2026-10-02'].note, 'הושענא רבה');
 });
 
 test('election day 27/10/2026 is a day off by default', () => {

@@ -37,7 +37,7 @@ export async function openSendDialog(ctx, {
   const errors = issues.filter((i) => i.level === 'error');
   const warns = issues.filter((i) => i.level === 'warn');
   if (today <= lastDay) warns.unshift({ date: null, level: 'warn', msg: `${monthLabel(ym)} עוד לא הסתיים – בדרך כלל שולחים ביום העבודה הראשון של החודש הבא.` });
-  const s = summarize(ym, days, profile);
+  const s = summarize(ym, days, profile, settings.special);
 
   const options = greetingOptions(ym, today, settings.special);
   let greetingIdx = 0;

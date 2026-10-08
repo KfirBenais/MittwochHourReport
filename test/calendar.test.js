@@ -26,6 +26,12 @@ test('2026 high holidays as reported in the real sheets', () => {
   assert.equal(primaryEvent('2026-07-23').name, 'תשעה באב');
   assert.equal(primaryEvent('2026-07-23').kind, 'fast');
   assert.equal(primaryEvent('2026-10-04'), null);
+  // ערבי חג (גם הושענא רבה וערב שביעי של פסח) – לא עובדים; יום הזיכרון – יום עבודה רגיל
+  assert.equal(primaryEvent('2026-10-02').kind, 'erev');
+  assert.equal(primaryEvent('2027-04-27').name, 'ערב שביעי של פסח');
+  assert.equal(primaryEvent('2027-04-27').kind, 'erev');
+  assert.equal(primaryEvent('2027-04-26').kind, 'cholhamoed');
+  assert.equal(primaryEvent('2027-05-11').kind, 'info');
 });
 
 test('special dates from settings are merged and ranked', () => {

@@ -190,8 +190,19 @@ export function validate(ym, days, settings, profile, { uptoISO = null } = {}) {
   return issues;
 }
 
+/** הערה לחופש בחול המועד – נספר כחצי יום */
+export const CHOLHAMOED_VACATION_NOTE = 'חצי יום חופש (חוה״מ)';
+
+/** כמה ימי חופש יום מסוים "עולה": חול המועד הוא חצי יום עבודה, ולכן חופש בו נספר כחצי יום */
+export function vacationValue(iso, day, special = []) {
+  const halfDay = primaryEvent(iso, special)?.kind === 'cholhamoed';
+  if (day?.type === 'vacation') return halfDay ? 0.5 : 1;
+  if (day?.type === 'halfVacation') return 0.5;
+  return 0;
+}
+
 /** סיכום חודשי */
-export function summarize(ym, days, profile) {
+export function summarize(ym, days, profile, special = []) {
   const s = {
     netMin: 0, grossMin: 0, workDays: 0, vacation: 0, sick: 0, familySick: 0, reserve: 0, choice: 0, holiday: 0, other: 0,
   };
@@ -203,8 +214,8 @@ export function summarize(ym, days, profile) {
     s.netMin += net;
     if (net > 0) s.workDays++;
     switch (day.type) {
-      case 'vacation': s.vacation += 1; break;
-      case 'halfVacation': s.vacation += 0.5; break;
+      case 'vacation':
+      case 'halfVacation': s.vacation += vacationValue(iso, day, special); break;
       case 'sick': s.sick += 1; break;
       case 'halfSick': s.sick += 0.5; break;
       case 'familySick': s.familySick += 1; break;

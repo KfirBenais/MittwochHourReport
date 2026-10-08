@@ -34,7 +34,7 @@ export async function showHistory(ctx) {
     const profile = profileForReport(ctx.user.profile, report);
     const days = report.days || {};
     const filled = Object.values(days).filter((d) => d.type).length;
-    const s = summarize(ym, days, profile);
+    const s = summarize(ym, days, profile, ctx.settings.special);
     const errors = filled ? validate(ym, days, ctx.settings, profile, { uptoISO: ym === curYm ? today : null }).filter((i) => i.level === 'error').length : 0;
     const st = filled || report.sentAt ? reportStatus(report) : { cls: 'empty', text: 'לא מולא' };
     const notSent = !report.sentAt && ym < curYm;
