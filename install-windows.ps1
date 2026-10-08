@@ -68,9 +68,10 @@ function Stop-HoursReport {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   }
   $serverJs = Join-Path $Dir 'server.js'
-  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cmd.exe'" |
+  # a process may already be gone by the time we get to it (stopping the task closes it) - that is fine
+  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cmd.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and ($_.CommandLine -like "*$serverJs*" -or $_.CommandLine -like "*$runner*") } |
-    ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 1
 }
 
@@ -146,7 +147,13 @@ if ($Port -gt 0) {
   }
 }
 
-$busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+# the previous version may need a moment to release the port
+$busy = $null
+for ($i = 0; $i -lt 10; $i++) {
+  $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+  if (-not $busy) { break }
+  Start-Sleep -Seconds 1
+}
 if ($busy) {
   $owner = (Get-Process -Id ($busy | Select-Object -First 1).OwningProcess -ErrorAction SilentlyContinue).ProcessName
   Write-Fail "Port $Port is already used by another program ($owner)."
